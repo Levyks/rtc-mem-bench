@@ -33,7 +33,7 @@ impl State {
     }
 
     pub fn register_loop_iteration(&self, duration: time::Duration) {
-        self.loop_avg_sum.add(duration.as_micros() as usize);
+        self.loop_avg_sum.add(duration.as_millis() as usize);
         self.loop_avg_count.inc();
     }
 

@@ -3,8 +3,9 @@ import {
   ensureNetworkExists,
   startContainer,
   removeAllContainers,
+  ContainerResult,
 } from "./docker";
-import { delay } from "./misc";
+import { createExplodedPromise, delay } from "./misc";
 import { createWriteStream } from "fs";
 import { mkdir } from "fs/promises";
 import { dirname } from "path";
@@ -14,7 +15,6 @@ type ClientDump = {
   clientsConnected: number;
   loopAvgSum: number;
   loopAvgCount: number;
-  timestamp: string;
 };
 
 async function main() {
@@ -28,40 +28,65 @@ async function main() {
     trackStats: true,
   });
 
-  console.log(`Waiting ${options.delay}ms`);
-  await delay(options.delay);
+  console.log(`Waiting ${options.serverDelay}ms`);
+  await delay(options.serverDelay);
 
-  const args = options.clientArgs.replace("{server}", server.ipAddress);
+  const dumps: ClientDump[] = [];
 
-  const clients: Awaited<ReturnType<typeof startClient>>[] = [];
+  startResultDumper(server, dumps);
 
-  for (let i = 0; i < options.clientQuanity; i++) {
-    clients.push(await startClient(args));
+  while (true) {
+    await startClient(server.ipAddress, dumps);
   }
-
-  startResultDumper(server, clients);
 }
 
-async function startClient(args: string) {
-  console.log(`Starting client container with args ${args}`);
+async function startClient(
+  serverIp: string,
+  dumps: ClientDump[]
+): Promise<void> {
+  const url = options.url.replace("{server}", serverIp);
+  console.log("url", url, serverIp);
+  const numberOfRooms = Math.floor(
+    options.totalClients / options.clientsPerRoom
+  );
+  const cmd = `./rtc-mem-bench-client ${options.transport} ${url} ${numberOfRooms} ${options.clientsPerRoom} ${options.loopDelay}`;
+
+  console.log(`Starting client container with cmd "${cmd}"`);
+
+  const { promise, resolve } = createExplodedPromise<void>();
 
   const container = await startContainer({
     image: "rtc-mem-bench-client",
     network: options.network,
-    cmd: args,
+    cmd,
     onStdout: (data) => {
-      result.lastDump = JSON.parse(data.trim());
+      const newDump = JSON.parse(data.trim()) as ClientDump;
+
+      dump.roomsCreated = newDump.roomsCreated;
+      dump.clientsConnected = newDump.clientsConnected;
+      dump.loopAvgSum += newDump.loopAvgSum;
+      dump.loopAvgCount += newDump.loopAvgCount;
+
+      if (newDump.roomsCreated >= numberOfRooms) {
+        resolve();
+      }
     },
   });
 
-  const result = { id: container.id, lastDump: <ClientDump | null>null };
+  const dump: ClientDump = {
+    roomsCreated: 0,
+    clientsConnected: 0,
+    loopAvgSum: 0,
+    loopAvgCount: 0,
+  };
+  dumps.push(dump);
 
-  return result;
+  return promise;
 }
 
 async function startResultDumper(
-  server: Awaited<ReturnType<typeof startContainer>>,
-  clients: Awaited<ReturnType<typeof startClient>>[],
+  server: ContainerResult,
+  dumps: ClientDump[],
   interval = 5000
 ) {
   const now = new Date();
@@ -77,13 +102,14 @@ async function startResultDumper(
     let loopAvgSum = 0;
     let loopAvgCount = 0;
 
-    for (const client of clients) {
-      const { lastDump } = client;
-      if (!lastDump) continue;
-      roomsCreated += lastDump.roomsCreated;
-      clientsConnected += lastDump.clientsConnected;
-      loopAvgSum += lastDump.loopAvgSum;
-      loopAvgCount += lastDump.loopAvgCount;
+    for (const dump of dumps) {
+      roomsCreated += dump.roomsCreated;
+      clientsConnected += dump.clientsConnected;
+      loopAvgSum += dump.loopAvgSum;
+      loopAvgCount += dump.loopAvgCount;
+
+      dump.loopAvgSum = 0;
+      dump.loopAvgCount = 0;
     }
 
     const now = new Date();

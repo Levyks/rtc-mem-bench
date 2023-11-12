@@ -1,15 +1,26 @@
-import { program, Option } from "commander";
+import { program } from "commander";
 import { z } from "zod";
 
 program
   .requiredOption("-s, --server-image <server-image>", "Server image")
   .requiredOption(
-    "-c, --client-args <client-args>",
-    "Client args, use {server} as a placeholder for the server ip/hostnames"
+    "--url <url>",
+    "Url to the server, use {server} as a placeholder for the server ip/hostnames"
   )
-  .option("-q, --client-quanity <client-quanity>", "Client quanity", "1")
+  .option(
+    "-c, --clients-per-room <clients-per-room>",
+    "Number of clients per room",
+    "8"
+  )
+  .option(
+    "-t, --transport <transport-type>",
+    "Transport to use for the benchmark",
+    "ws"
+  )
+  .option("--total-clients <total-clients>", "Total number of clients", "64000")
+  .option("-l, --loop-delay <delay>", "Delay between loops in ms", "1000")
+  .option("--server-delay <delay>", "Delay after starting the server", "1000")
   .option("-n, --network <network>", "Docker network", "rtc-mem-bench")
-  .option("-d, --delay <delay>", "Delay after server starts (ms)", "1000")
   .option(
     "-m, --memory <memory>",
     "Memory limit for server container in bytes",
@@ -21,15 +32,13 @@ program.parse();
 export const options = z
   .object({
     serverImage: z.string(),
-    serverContainerName: z.string().optional(),
-    clientArgs: z.string(),
-    clientQuanity: z.coerce.number(),
+    url: z.string(),
+    clientsPerRoom: z.coerce.number(),
+    transport: z.string(),
+    loopDelay: z.coerce.number(),
+    totalClients: z.coerce.number(),
+    serverDelay: z.coerce.number(),
     network: z.string(),
-    delay: z.coerce.number(),
     memory: z.coerce.number(),
   })
-  .transform((obj) => ({
-    ...obj,
-    serverContainerName: obj.serverContainerName ?? obj.serverImage,
-  }))
   .parse(program.opts());

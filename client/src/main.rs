@@ -33,10 +33,10 @@ async fn main() {
 
         state.inc_rooms_created();
 
-        let cloned_state = state.clone();
+        let state = state.clone();
 
         handles.push(tokio::spawn(async move {
-            room_loop(clients, args.loop_delay, cloned_state).await
+            room_loop(clients, args.loop_delay, state).await
         }));
     }
 
@@ -58,7 +58,6 @@ async fn connect_clients(args: &Args, room: &str, state: State) -> anyhow::Resul
         let client = Client::connect(&args.transport, &args.url, &username, room).await?;
         clients.push(client);
         state.inc_clients_connected();
-        time::sleep(time::Duration::from_millis(args.delay_per_client)).await;
     }
 
     Ok(clients)

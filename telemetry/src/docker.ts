@@ -9,6 +9,12 @@ export const docker = new Docker({
 const containersStarted: string[] = [];
 let removeAllContainersPromise: Promise<void> | undefined;
 
+export type ContainerResult = {
+  id: string;
+  ipAddress: string;
+  memory: number;
+};
+
 export async function startContainer({
   image,
   network,
@@ -25,11 +31,7 @@ export async function startContainer({
   onStdout?: (data: string) => void;
   exitProcessOnExit?: boolean;
   trackStats?: boolean;
-}): Promise<{
-  id: string;
-  ipAddress: string;
-  memory: number;
-}> {
+}): Promise<ContainerResult> {
   const opts = {
     Image: image,
     Cmd: cmd?.split(" "),
